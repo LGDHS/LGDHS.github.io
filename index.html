@@ -171,7 +171,7 @@
 <p>LZ77采用滑动窗口(sliding-windowcompression)来实现这个算法，扫描头从串的头部开始扫描，在扫描头的前面有一个长度未N的滑动窗口。若发现扫描头处的串和窗口里的最长匹配串是相同的，则用（两个串之间的距离， 串长度）来代替后一个重复的串，同时还需要添加一个表示是真实串还是替换后的串的字节在前面以方便解压。实际过程中滑动窗口的大小固定，匹配的串也有最小长度的限制，以方便（标识+串之间距离+串长度）之和所占用的字节是固定的。</p>
 <h4 id="emsp-emsp-哈夫曼编码"><a href="#emsp-emsp-哈夫曼编码" class="headerlink" title="&emsp;&emsp; 哈夫曼编码"></a>&emsp;&emsp; 哈夫曼编码</h4><p>&emsp;&emsp;Huffman Coding 是大学课本中一般都会提到的算法。核心思路是通过构造 Huffman Tree 的方式给字符重新编码（核心是避免一个叶子的路径是另外一个叶子路径的前缀），以保证出现频路越高的字符占用的字节越少。关于 Huffman Tree 的构造这里不再细说，不太清楚的可以参考：Huffman Coding。</p>
 <p>解压：Huffman Coding 之后需要维护一张 Huffman Map 表，来记录重新编码后的字符串，根据这张表，还原原始串也是非常高效的。</p>
-<h2 id="HTTP-压缩过程"><a href="#HTTP-压缩过程" class="headerlink" title="HTTP 压缩过程"></a>HTTP 压缩过程</h2><p><img src="/2022/06/04/gzip%E6%95%B0%E6%8D%AE%E5%8E%8B%E7%BC%A9/../public/img/gzip01.png" alt="image"></p>
+<h2 id="HTTP-压缩过程"><a href="#HTTP-压缩过程" class="headerlink" title="HTTP 压缩过程"></a>HTTP 压缩过程</h2><p><img src="/2022/06/19/gzip%E6%95%B0%E6%8D%AE%E5%8E%8B%E7%BC%A9/gzip01.png" alt="image"></p>
 <p>第一步:客户端请求服务器，在 request headers 中设置属性 accept-encoding: gzip，表明客户端支持 gzip。</p>
 <p>第二步:服务器接收到请求后，根据请求头判断客户端是否支持 gzip，支持返回压缩过的内容并在返回headers中 Content-Type 包含 content-encoding: gzip，不支持择返回未经压缩的内容</p>
 <p>第三步:客户端接收到服务器的响应后，根据 content-encoding: gzip 对响应数据进行解码，获取到原始数据后判断内容是否被压缩，如果被压缩则解压后显示。</p>
@@ -211,7 +211,7 @@
 
       
         <p class="article-more-link">
-          <a class="article-more-a" href="/2022/06/04/gzip%E6%95%B0%E6%8D%AE%E5%8E%8B%E7%BC%A9/">展开全文 >></a>
+          <a class="article-more-a" href="/2022/06/19/gzip%E6%95%B0%E6%8D%AE%E5%8E%8B%E7%BC%A9/">展开全文 >></a>
         </p>
       
 
