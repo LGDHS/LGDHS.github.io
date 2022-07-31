@@ -22,7 +22,7 @@
 <meta property="og:image" content="http://example.com/2022/06/20/Golang%E8%B0%83%E5%BA%A6%E5%99%A8/%E8%8E%B7%E5%8F%96%E5%85%A8%E5%B1%80%E9%98%9F%E5%88%97.png">
 <meta property="og:image" content="http://example.com/2022/06/20/Golang%E8%B0%83%E5%BA%A6%E5%99%A8/%E5%8D%8F%E7%A8%8B%E7%AA%83%E5%8F%96.png">
 <meta property="article:published_time" content="2022-06-20T15:41:20.181Z">
-<meta property="article:modified_time" content="2022-07-31T15:31:30.356Z">
+<meta property="article:modified_time" content="2022-07-31T15:36:27.391Z">
 <meta property="article:author" content="FengLiuRen">
 <meta property="article:tag" content="java,go,mysql,kafka">
 <meta name="twitter:card" content="summary">
@@ -189,7 +189,7 @@
 <li><strong>内核级线程模型：</strong> 用户线程与KSE是1对1关系(1:1)。这种方式直接借助OS提供的线程能力，并且不同用户线程之间一般也不会相互影响。但其创建，销毁以及多个线程之间的上下文切换等操作都是直接由OS层面亲自来做，在需要使用大量线程的场景下对OS的性能影响会很大。</li>
 <li><strong>用户级线程模型：</strong> 用户线程与KSE是多对1关系(M:1)，这种线程的创建，销毁以及多个线程之间的协调等操作都是由用户自己实现的线程库来负责，对OS内核透明，一个进程中所有创建的线程都与同一个KSE在运行时动态关联。</li>
 <li><strong>两级线程模型：</strong>  用户线程与KSE是多对多关系(M:N)，这种实现综合了前两种模型的优点，当某个KSE由于其上工作的线程的阻塞操作被内核调度出CPU时，当前与其关联的其余用户线程可以重新与其他KSE建立关联关系。<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Go语言中的并发使用的是两级线程模型，Go为了实现该模型自己实现了一个运行时调度器来负责Go中的”线程”与KSE的动态关联，即用户调度器实现用户线程到KSE的“调度”，内核调度器实现KSE到CPU上的调度。下面详细介绍下Go语言构建的线程模型。<br><img src="/2022/06/20/Golang%E8%B0%83%E5%BA%A6%E5%99%A8/%E7%BA%BF%E7%A8%8B%E6%A8%A1%E5%9E%8B.png" alt="image"><blockquote>
-<p>说明：<br>M:machine的缩写。一个M代表一个内核线程。<br>P:processor的缩写。一个P代表执行一个Go代码片段所必需的资源（或称上下文环境）。<br>G：goroutine的缩写。一个G代表一个Go代码片段，前者是对后者的一种封装。<br>KSE:线程与内核调度实体.</p>
+<p>说明：<br><strong>M</strong>:machine的缩写。一个M代表一个内核线程。<br><strong>P</strong>:processor的缩写。一个P代表执行一个Go代码片段所必需的资源（或称上下文环境）。<br><strong>G</strong>：goroutine的缩写。一个G代表一个Go代码片段，前者是对后者的一种封装。<br><strong>KSE</strong>:线程与内核调度实体.</p>
 </blockquote>
 </li>
 </ul>
@@ -201,7 +201,7 @@
 <figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// m 代表工作线程，保存了自身使用的栈信息</span></span><br><span class="line"><span class="keyword">type</span> m <span class="keyword">struct</span> &#123;</span><br><span class="line">    g0      *g     <span class="comment">// goroutine with scheduling stack/</span></span><br><span class="line">    mstartfn      <span class="function"><span class="keyword">func</span><span class="params">()</span></span></span><br><span class="line">    curg          *g       <span class="comment">// 当前工作线程绑定的 p</span></span><br><span class="line">    p             puintptr <span class="comment">// attached p for executing go code (nil if not executing go code)</span></span><br><span class="line">    nextp         puintptr</span><br><span class="line">   ......</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;上面在M结构中比较重要的字段，其中</p>
 <blockquote>
-<p>g0:表示一个特殊的goroutine，这个是Go启动系统之初创建的，用于执行一些运行时的任务，也记录工作线程（也就是内核线程）使用的栈信息，在执行调度代码时需要使用执行用户 goroutine 代码时，使用用户 goroutine 自己的栈，因此调度时会发生栈的切换。<br>mstartfn:表示M的启始函数，这个函数其实就是在编写go语句时携带的那个函数。<br>curg:会存放当前M正在运行的那个G的执行。<br>p:指向与当前M相关联的那个P。<br>nextp:用于暂存与当前M有潜在关联的P。调度器将某个P赋给某个M的nextp字段的操作，称为对M和P的预联。</p>
+<p><strong>g0</strong>:表示一个特殊的goroutine，这个是Go启动系统之初创建的，用于执行一些运行时的任务，也记录工作线程（也就是内核线程）使用的栈信息，在执行调度代码时需要使用执行用户 goroutine 代码时，使用用户 goroutine 自己的栈，因此调度时会发生栈的切换。<br><strong>mstartfn</strong>:表示M的启始函数，这个函数其实就是在编写go语句时携带的那个函数。<br><strong>curg</strong>:会存放当前M正在运行的那个G的执行。<br><strong>p</strong>:指向与当前M相关联的那个P。<br><strong>nextp</strong>:用于暂存与当前M有潜在关联的P。调度器将某个P赋给某个M的nextp字段的操作，称为对M和P的预联。</p>
 </blockquote>
 <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M在创建之初，会被加入待全局的M列表（runtime.allm）中。这时，它的起始函数和预联的P也会被设置。最后运行时系统会为这个M专门创建一个新的内核线程并与之相关联。起始函数仅当运行时系统要用此M执行系统监控或者垃圾回收等任务的时候才会被设置。这里的全局列表在运行时系统在需要的时候，次啊会通过它获取到所有的M的信息，同时，它也可以防止M被当作垃圾回收掉。<br>运行时系统管辖的M（或者说runtime.allm中的M）有时候也会被停止，比如在运行时系统执行垃圾回收任务的过程中。运行时系统在停止M的时候会把它放入调度器的空闲M列表（runtime.sched.midle）。在需要一个未被使用的M时，运行是系统会尝试从该列表中获取。M是否空闲，仅以它是否存在于调度器的空闲列表中为依据。<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;单个Go程序所使用的M的最大数量是可以设置的。Go程序运行的时候会先启动一个引导程序，这个引导程序会为其运行建立必要的环境，在初始化调度的时候，它会对M的最大数量进行初始设置，这个初始值是10000，也就是说，一个Go城市最多以使用10000个M，这就意味着最多可以有10000个内核线程服务于当前Go程序，这一般是理想情况下，由于操作系统内核对进程的虚拟内存的布局控制以及大小限制，<br>这样量级的线程可能很难共存。除了初始化设置之外，也可以在Go程序中对该限制进行设置。为了达到此目的，可以调用标准库代码包runtime/debug中的SetMaxThreads函数并提供新的M的最大数量，如果在调用SetMaxThreads函数时给定的新值比当时M的实际数量还要小，运行时系统会立即panic，所以还是要谨慎使用该函数。</p>
 <ul>
@@ -209,7 +209,7 @@
 </ul>
 <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;P是G能够在M中运行的关键，Go的运行时系统会适时地让P与不同的M建立或者断开关联，以使P中那些可运行的G能够及时获取运行时机。<br>改变单个Go程序间接拥有的P的最大数量有两种方法。第一种方法，调用函数runtime.GOMAXPROCS并把想要设定的数量作为参数传人。第二种方法，在Go程序运行前设置环境变量GOMAXPROCS的值。<br>P的最大数量实际上是对程序中并发运行的G的规模的一种限制。 P的数量即为可运行G的队列的数量。一个G在被启用后，会先被追加到某个P的可运行G队列中，以等待运行时机。一个P只有与一个M关联在起，才会使其可运行G队列中的G有机会运行。<br>不过，设置P的最大数量只能能限制住P的数量，而对G和M的数量没有任何约束。当M因系统调用而阻塞(更确切地说，是它运行的G进入了系统调用)的时候，运行时系统会把该M和与之关联的P分离开来。这时，如果这个P的可运行G队列中还有未被运行的G,那么运行时系统就会找到一个空闲M，或创建一个新的M，并与该P关联以满足这些G的运行需要。因此，M的数量在很多时候也都会比P多。而G的数量，一般取决于Go程序本身。<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;在确定P最大数量之后，运行时系统会根据这个数值重整全局的P列表(runtime.allp)。与全局M列表类似，该列表中包含了当前运行时系统创建的所有P。运行时系统会把这些P中的可运行G全部取出，并放人调度器的可运行G队列中。这是调整全局P列表的一个重要前提。被转移的那些G,会在以后经由调度再次放入某个P的可运行G队列。与空闲M列表类似，运行时系统中也存在一个调度器的空闲P列表( runtime.sched.pidle)。当一个P不再与任何M关联的时候，运行时系统就会把它放人该列表;而当运行时系统需要个空闲的P关联某个M的话,会从此列表中取出一个。<br>注意，P进入空闲P列表的一个前提条件是它的可运行G列表必须为空。例如，在重整全局P列表的时候，P在被清空可运行G队列之后，才会被放人空闲P列表。另外，与M不同，P本身是有状态的，可能具有的状态如下:</p>
 <blockquote>
-<p>Pidle:此状态表明当前P未与任何M存在关联。<br>Prunnin:此状态表明当前P正在与某个M关联。<br>Psyscall:此状态表明当前P中的运行的那个G正在进行系统调用。<br>Pgcstop:此状态表明运行时系统需要停止调度。例如，运行时系统在开始垃圾回收的某些步骤前，就会试图把全局P列表中的所有P都置于此状态。<br>Pdead:此状态表明当前P已经不会再被使用。如果在Go程序运行的过程中，通过调用runtime.GOMAXPROCS函数减少了P的最大数量，那么多余的P就会被运行时系统置于此状态。</p>
+<p><strong>Pidle</strong>:此状态表明当前P未与任何M存在关联。<br><strong>Prunnin</strong>:此状态表明当前P正在与某个M关联。<br><strong>Psyscall</strong>:此状态表明当前P中的运行的那个G正在进行系统调用。<br><strong>Pgcstop</strong>:此状态表明运行时系统需要停止调度。例如，运行时系统在开始垃圾回收的某些步骤前，就会试图把全局P列表中的所有P都置于此状态。<br><strong>Pdead</strong>:此状态表明当前P已经不会再被使用。如果在Go程序运行的过程中，通过调用runtime.GOMAXPROCS函数减少了P的最大数量，那么多余的P就会被运行时系统置于此状态。</p>
 </blockquote>
 <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;P在创建之初的状态是Pgcstop,P处于这一初始状态的时间会非常短暂。在紧接着的初始化之后，运行时系统会将其状态设置为Pidle,并放人调度器的空闲P列表。P在各个状态之间进行流转的具体情况如下图所示:<br><img src="/2022/06/20/Golang%E8%B0%83%E5%BA%A6%E5%99%A8/P%E7%9A%84%E7%8A%B6%E6%80%81%E8%BD%AC%E6%8D%A2.png" alt="image"><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;可以看到，非Pdead状态的P都会在运行时系统想要停止调度时被置于Pgcstop状态。不过，等到需要重启调度的时候(如垃圾回收结束后),它们并不会被恢复至原有状态，而会被统一地转换为Pidle状态。也就是说，它们会被放到同一起跑线上,并公平地接受再次调度。另一方面，非Pgcstop状态的P都可能因全局P列表的缩小而被认为是多余的，并被置于Pdead状态。不过，并不用担心其中的G会失去归宿。因为，在P被转换为Pdead状态之前，其可运行G队列中的G都会被转移到调度器的可运行G队列，而它的自由G列表中的G也都会被转移到调度器的自由G列表中。</p>
 <ul>
@@ -217,7 +217,7 @@
 </ul>
 <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;一个G就代表一个goroutine，执行go语句时Go的编译器会调用newproc内部函数，并会把go函数及其参数都作为参数传递给这个函数。运行时系统收到这个调用后，会先检查go函数数及其参数的合法性，然后试图从本地P的G列表和调度器的G列表获取可用的G,如果没有获取到，就新建一个G。与M和P相同，运行时系统也持有一个G的全局列表（runtime.al1gs)。新建的G会在第一时问被加入该列表。这个全局列表的主要作用是：集中存放当前运行时系统中的所有G的指针。无论用于封装当前这个go函数的G是否是新的，运行时系统都会对它进行一次初始化，包括关联go函数数以及设置该G的状态和ID等步骤。在初始化完成后，这个G会立即被存储到本地P的runnext字段中;该字段用于存放新的G。如果这时runnext字段已存有一个G，那么这个已有的G就会被”踢到”该P的G队列的末尾。如果该队列已满，那么这个G就只能追加到调度器的可运行G队列中了。<br>一个G都会由运行时系统根据其实际状况设置不同的状态，其主要状态如下。</p>
 <blockquote>
-<p>Gidle:表示当前G刚被新分配，但还末初始化。<br>Grunnable:表示当前G正在可运行队列中等待运行。<br>Grunning:表示当前G正在运行。<br>Gsyscal:表示当前G正在执行某个系统调用。<br>Gwaiting:表示当前G正在阻塞。<br>Gdead:表示当前G正在闲置。<br>Gcopystack:表示当前G的栈正被移动，移动的原因可能是栈的扩展或收缩。</p>
+<p><strong>Gidle</strong>:表示当前G刚被新分配，但还末初始化。<br><strong>Grunnable</strong>:表示当前G正在可运行队列中等待运行。<br><strong>Grunning</strong>:表示当前G正在运行。<br><strong>Gsyscal</strong>:表示当前G正在执行某个系统调用。<br><strong>Gwaiting</strong>:表示当前G正在阻塞。<br><strong>Gdead</strong>:表示当前G正在闲置。<br><strong>Gcopystack</strong>:表示当前G的栈正被移动，移动的原因可能是栈的扩展或收缩。</p>
 </blockquote>
 <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;除了上述状态，还有一个称为Gscan的状态。不过这个状态并不能独立存在，而是组合状态的一部分。比如，Gscan与Grunnable组合成Gscanrunnable状态，代表当前G正等待运行，同时它的栈正被扫描，扫描的原因一般是GC(垃圾回收）任务的执行。又比如，Gscan与Grunning 组合成Gscanrunning 状态，表示正处于Grunning状态的当前G的栈要被GC扫描时的一个短暂时刻。在运行时系统会先对这个G进行初始化，一旦该G准备就绪，其状态就会被设置成runnable。也就是说，一个G真正开始被使用是在其状态设置为Grunnable之后。下图展示了G在其生命周期内的状态流转情况。<br><img src="/2022/06/20/Golang%E8%B0%83%E5%BA%A6%E5%99%A8/G%E7%9A%84%E8%BF%90%E8%A1%8C%E7%8A%B6%E6%80%81.png" alt="image"><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;另外，进人死亡状态（Gdead）的G 是可以重新初始化并使用的。相比之下，P在进人死亡状态(pdead)之后，就只能面临销毁的结局。由此也可以说明Gdead状态与pdead 状态所表达的含义截然不同。处于Gdead状态 G会被放人本地P或调度器的G列表，这是它们被重用的前提条件。</p>
 <h2 id="调度器"><a href="#调度器" class="headerlink" title="调度器"></a>调度器</h2><p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;在Go语言中负责调度任务的为调度器，调度的主要对象是M、P和G的实例。下面详情介绍下GMP模型，首先其示图为:<br><img src="/2022/06/20/Golang%E8%B0%83%E5%BA%A6%E5%99%A8/%E8%B0%83%E5%BA%A6%E5%99%A8.png" alt="image"><br>在GPM模型中有几个重要的概念。</p>
@@ -226,14 +226,14 @@
 </blockquote>
 <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Goroutine调度器和OS调度器是通过M结合起来的，每个M都代表了1个内核线程，OS调度器负责把内核线程分配到CPU的核上执行。</p>
 <blockquote>
-<p>注意：<br>P和M个数的问题<br>（1）P的数量由启动时环境变量$GOMAXPROCS或者是由runtime的方法GOMAXPROCS()决定。这意味着在程序执行的任意时刻都只有$GOMAXPROCS个Goroutine在同时运行。<br>（2）M的数量由Go语言本身的限制决定，Go程序启动时会设置M的最大数量，默认为10000，但是内核很难支持这么多的线程数，所以这个限制可以忽略。runtime/debug中的SetMaxThreads()函数可设置M的最大数量，当一个M阻塞了时会创建新的M。<br>M与P的数量没有绝对关系，一个M阻塞，P就会去创建或者切换另一个M，所以，即使P的默认数量是1，也有可能会创建很多个M出来。<br>P和M何时被创建<br>（1）P创建的时机在确定了P的最大数量n后，运行时系统会根据这个数量创建n个P。<br>（2）M创建的时机是在当没有足够的M来关联P并运行其中可运行的G的时候。比如所有的M此时都阻塞住了，而P中还有很多就绪任务，就会去寻找空闲的M，而没有空闲的，就会去创建新的M。                                                                   </p>
+<p>注意：<br><strong>P和M个数的问题</strong><br>（1）P的数量由启动时环境变量$GOMAXPROCS或者是由runtime的方法GOMAXPROCS()决定。这意味着在程序执行的任意时刻都只有$GOMAXPROCS个Goroutine在同时运行。<br>（2）M的数量由Go语言本身的限制决定，Go程序启动时会设置M的最大数量，默认为10000，但是内核很难支持这么多的线程数，所以这个限制可以忽略。runtime/debug中的SetMaxThreads()函数可设置M的最大数量，当一个M阻塞了时会创建新的M。<br><strong>M与P的数量没有绝对关系，一个M阻塞，P就会去创建或者切换另一个M，所以，即使P的默认数量是1，也有可能会创建很多个M出来。</strong><br><strong>P和M何时被创建</strong><br>（1）P创建的时机在确定了P的最大数量n后，运行时系统会根据这个数量创建n个P。<br>（2）M创建的时机是在当没有足够的M来关联P并运行其中可运行的G的时候。比如所有的M此时都阻塞住了，而P中还有很多就绪任务，就会去寻找空闲的M，而没有空闲的，就会去创建新的M。                                                                   </p>
 </blockquote>
 <ul>
 <li><p><strong>g0和m0</strong><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;运行时系统中的每个M都会拥有一个特殊的G，一般称为M的g0。M的go管辖的内存称为M的调度找。可以说，M的g0对应于操作系统为相应线程创建的栈。因此，M的调度栈也可以称为OS线程栈或系统栈。<br>M的g0不是由Go程序中的代码（更确切地说是go语句）间接生成的，而是由Go运行时系统在初始化M时创建并分配给该M的。M的g0—般用于执行调度、垃圾回收栈管理等方面的任务。顺便提一下，M还会拥有一个专用于处理信号的 G，称为gsignal<br>它的栈可称为信号栈。系统栈和信号栈不会自动增长，但一定会有足够的空间执行代码。除了g0之外，其他由M运行的G都可以视作用户级别的G，简称用户G，而它们的g0和gsignal 都可以称为系统G。Go运行时系统会进行切换，以使每个M都可以<br>交替运行用户G和它的g0。与用户G不同，g0不会被阻塞，也不会包含在任何G队列或列表中。此外，它的栈也不会在垃圾回收期间被扫描。除了每个M都有属于它自己的g0之外，还存在一个runtime.gO。runtime.g0用于执行引导程序，它运行在<br>Go程序拥有的第一个内核线程中，这个内核线程也称为runtime.m0。runtime.m0和runtime.g0都是静态分配的，因此引导程序也无需为它们分配内存。</p>
 </li>
 <li><p><strong>调度器的设计策略</strong><br>工作线程m需要通过协程调度获得具体可运行的某一协程g。获取协程g的一般策略主要包含三大步:</p>
 <blockquote>
-<p>1、查找p本地的局部运行队列。<br>2、查找schedt中的全局运行队列。<br>3、窃取其他p中的局部运行队列。</p>
+<p>1、<strong>查找p本地的局部运行队列。</strong><br>2、<strong>查找schedt中的全局运行队列。</strong><br>3、<strong>窃取其他p中的局部运行队列。</strong></p>
 </blockquote>
 </li>
 </ul>
