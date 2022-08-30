@@ -157,6 +157,94 @@
           <div id="js-content" class="content-ll">
             
   
+    <article id="post-Golang调度方式" class="article article-type-post  article-index" itemscope itemprop="blogPost">
+  <div class="article-inner">
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <hr>
+<h2 id="Golang调度方式"><a href="#Golang调度方式" class="headerlink" title="Golang调度方式"></a>Golang调度方式</h2><h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;在介绍Go调度方式前，先给大家看一个段代码：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> main</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> (</span><br><span class="line">        <span class="string">&quot;fmt&quot;</span></span><br><span class="line">        <span class="string">&quot;runtime&quot;</span></span><br><span class="line">        <span class="string">&quot;time&quot;</span></span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">        runtime.GOMAXPROCS(<span class="number">1</span>)</span><br><span class="line">        <span class="keyword">go</span> <span class="function"><span class="keyword">func</span><span class="params">()</span></span> &#123;</span><br><span class="line">                <span class="keyword">for</span>  &#123;</span><br><span class="line"></span><br><span class="line">                &#125;</span><br><span class="line">        &#125;()</span><br><span class="line">        time.Sleep(time.Millisecond)</span><br><span class="line">        fmt.Println(<span class="string">&quot;finished.&quot;</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;这段代码在go1.14之前的版本运行是死循环，在go1.14以及之后的版本是运行输出finished然后退出。那么为什么会不同呢？接下来先看看go调度方式的发展史。</p>
+<h2 id="go调度发展史"><a href="#go调度发展史" class="headerlink" title="go调度发展史"></a>go调度发展史</h2><ul>
+<li><strong>v1.1 的非抢占式调用</strong><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;在最初的v1.1版本中，只有当一个协程主动让出CPU资源（可以是运行结束，也可以是发生了系统调用或其他阻塞性操作），才能触发调度，进行下一个协程。而如果一个协程运行了很久，也没有主动让出的动作发生，就会自私的一个人占用整个线程，该线程无法再去运行其他的goroutine了。<br>这种策略会让 Go 的并发性大打折扣，名不符实。</li>
+<li><strong>v1.2 基于协作的抢占式调用</strong><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;由于 v1.1 的非抢占式调用，以程序的并发效率影响实在太大。因为在下一个版本v1.2就紧急地对调度策略进行了临时的优化。经过优化后，go从v1.2开始支持抢占式的调用：</li>
+</ul>
+<blockquote>
+<p>1、如果sysmon监控线程发现有个协程A执行之间太长了（或者 gc 场景，或者 stw 场景），那么会友好的在这个A协程的某个字段设置一个抢占标记 ；<br>2、协程A在call一个函数的时候，会复用到扩容栈（morestack）的部分逻辑，检查到抢占标记之后，让出 cpu，切到调度主协程里；</p>
+</blockquote>
+<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;之所以说 v1.2 的抢占式调用是临时的优化方案，是因为这种抢占式调度是基于协作的。在一些的边缘场景下，协程还是在会独自占用整个线程无法让出。这是因为A调度权被抢占有个前提：A必须主动call函数，这样才能有走到morestack的机会。</p>
+<ul>
+<li><strong>v1.14 实现了基于信号的抢占式调度</strong><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Go程序在启动时，会在runtime.sighandler方法注册并且绑定SIGURG信号，绑定相应的runtime.doSigPreempt抢占方法。同时在调度的runtime.sysmon方法会调用retake方法处理一下两种场景：<blockquote>
+<p>1、抢占阻塞在系统调用上的P。<br>2、抢占运行时间过长的 G。</p>
+</blockquote>
+</li>
+</ul>
+<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;该方法会检测符合场景的P，当满足上述两个场景之一时，就会发送信号给M。M收到信号后将会休眠正在阻塞的Goroutine，调用绑定的信号方法，并进行重新调度。以此来解决这个问题。<br>注：</p>
+<blockquote>
+<p>在Go语言中，sysmon会用于检测抢占。sysmon是Go的Runtime的系统检测器，sysmon可进行forcegc、netpoll、retake 等一系列骚操作。</p>
+</blockquote>
+<h2 id="go调度场景"><a href="#go调度场景" class="headerlink" title="go调度场景"></a>go调度场景</h2><ul>
+<li><strong>第一种：系统调用 SysCall</strong><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;当在goroutine进行一些sleep休眠、读取磁盘或者发送网络请求时，其实都会发生系统调用，进入操作系统内核。而一旦发生系统调用，就会直接触发runtime的调度，当前的P就会去找其他的M进行绑定，并取出G开始运行。</li>
+<li><strong>第二种：等待锁、通道</strong><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;代码中若因为锁或者通道导致代码阻塞了，也会触发调度。</li>
+<li><strong>人工触发</strong><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;在代码中直接调用 runtime.Gosched 方法，也可以手动触发。<h2 id="问题回顾"><a href="#问题回顾" class="headerlink" title="问题回顾"></a>问题回顾</h2>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;针对于文章开头的代码运行结果不同的问题，可以做以下解释：<blockquote>
+<p>1、当运行到time.Sleep后，线程上的goroutine会从main切换到前面的匿名函数协程，而这个匿名函数协程并是在作for死循环，并没有任何可以让出cpu运行权的操作，因为该程序在go 1.14之前的go版本中，运行后会一直卡住，而不会打印finished.。<br>2、在go 1.14之前上面那段程序中更没有涉及主动放弃执行权的调用（runtime.Gosched），又或是其他调用（可能会导致执行权转移）的行为。因此这个 Goroutine 是没机会溜号的，只能一直卡住。<br>3、由于单核CPU，其只有唯一的P，并且执行for死循环，被迫卡住。因此主协程永远没有机会呗调度，所以这个Go程序自然也就一直阻塞在了执行死循环的Goroutine中，永远无法停止<br>4、Go1.14实现了基于信号的抢占式调度，这些执行无限循环的goroutine会被调度器“拿下”，P就会空出来。所以当主 goroutine sleep 时间到了之后，马上就能获得 P，并得以打印出finished。      </p>
+</blockquote>
+</li>
+</ul>
+<h2 id="协作式抢占与信号式抢占区别"><a href="#协作式抢占与信号式抢占区别" class="headerlink" title="协作式抢占与信号式抢占区别"></a>协作式抢占与信号式抢占区别</h2><ul>
+<li><strong>协作式抢占调度</strong></li>
+</ul>
+<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;sysmon发现一个P一直处于running状态超过了10ms，将调用preemptone将G的stackguard0=stackPreempt，同时设置sched.gcwaiting=1。被标记后，在该G调用新函数时，通过g.stackguard0判断是否需要栈增长，需要栈增长就会通过morestack()检查执行schedule()，检查到sched.gcwaiting==1时，就会让当前G让出。</p>
+<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;G设置了标记位后，也不一定会被抢占。如果G调用的新函数是一个简单的死循环，将无法被抢占。如果G调用的新函数所需栈空间很少也不会被抢占，只有当新函数触发栈空间检查（morestack()）, 所需栈大于128字节，才会被抢占。那么这里就带来一些问题，比如下面的代码示例：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> main</span><br><span class="line"><span class="keyword">import</span> <span class="string">&quot;fmt&quot;</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">(n <span class="type">int</span>)</span></span> &#123;</span><br><span class="line">    <span class="keyword">go</span> <span class="function"><span class="keyword">func</span><span class="params">(n <span class="type">int</span>)</span></span>&#123;</span><br><span class="line">        <span class="keyword">for</span>&#123;</span><br><span class="line">            n++</span><br><span class="line">            fmt.Println(n)</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;(<span class="number">0</span>)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span>&#123;&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;在go 1.13版本之前，执行上述代码，会阻塞在go func()。原因是当go的GC触发时，会执行STW。而STW会抢占所有的P，让GC来运行。而go func()中是1个简单的死循环，这类操作无法进行newstack、morestack、syscall，所以无法检测stackguard0 == stackpreempt，也就不会执行后续的schedule()让当前G让出，导致阻塞。这种依赖栈增长的方式，不算是真正的抢占式调度。</p>
+<ul>
+<li><strong>信号式抢占区别调度</strong></li>
+</ul>
+<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;sysmon发现一个P一直处于running状态超过了10ms，调用preemptone()方法时，会通过系统调用，向m发送sigPreempt信号。m收到信号后，会将信号交给sighandler处理，sighandler确定信号为sigPreempt以后，调用doSigPreempt函数，doSigPreempt函数在确认P和G允许抢占，并可以安全地执行抢占后，会向G的执行上下文中注入异步抢占函数asyncPreempt。asyncPreempt汇编函数调用后，就会保存G的上下文，并调用schedule()让当前G让出。<br>可以看到基于信号的抢占式调度，不再依赖于栈增长，即使空的for{}没有执行栈增长检测代码，也依然没有阻塞，可以成功实现抢占式调度。</p>
+
+      
+
+      
+    </div>
+    <div class="article-info article-info-index">
+      
+      
+      
+
+      
+        <p class="article-more-link">
+          <a class="article-more-a" href="/2022/08/14/Golang%E8%B0%83%E5%BA%A6%E6%96%B9%E5%BC%8F/">展开全文 >></a>
+        </p>
+      
+
+      
+      <div class="clearfix"></div>
+    </div>
+  </div>
+</article>
+
+<aside class="wrap-side-operation">
+    <div class="mod-side-operation">
+        
+        <div class="jump-container" id="js-jump-container" style="display:none;">
+            <a href="javascript:void(0)" class="mod-side-operation__jump-to-top">
+                <i class="icon-font icon-back"></i>
+            </a>
+            <div id="js-jump-plan-container" class="jump-plan-container" style="top: -11px;">
+                <i class="icon-font icon-plane jump-plane"></i>
+            </div>
+        </div>
+        
+        
+    </div>
+</aside>
+
+
+
+
+  
     <article id="post-Golang调度器" class="article article-type-post  article-index" itemscope itemprop="blogPost">
   <div class="article-inner">
     
