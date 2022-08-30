@@ -180,9 +180,9 @@
 </blockquote>
 </li>
 </ul>
-<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;该方法会检测符合场景的P，当满足上述两个场景之一时，就会发送信号给M。M收到信号后将会休眠正在阻塞的Goroutine，调用绑定的信号方法，并进行重新调度。以此来解决这个问题。<br>注：</p>
+<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;该方法会检测符合场景的P，当满足上述两个场景之一时，就会发送信号给M。M收到信号后将会休眠正在阻塞的Goroutine，调用绑定的信号方法，并进行重新调度。以此来解决这个问题。</p>
 <blockquote>
-<p>在Go语言中，sysmon会用于检测抢占。sysmon是Go的Runtime的系统检测器，sysmon可进行forcegc、netpoll、retake 等一系列骚操作。</p>
+<p>注：<br>在Go语言中，sysmon会用于检测抢占。sysmon是Go的Runtime的系统检测器，sysmon可进行forcegc、netpoll、retake 等一系列骚操作。</p>
 </blockquote>
 <h2 id="go调度场景"><a href="#go调度场景" class="headerlink" title="go调度场景"></a>go调度场景</h2><ul>
 <li><strong>第一种：系统调用 SysCall</strong><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;当在goroutine进行一些sleep休眠、读取磁盘或者发送网络请求时，其实都会发生系统调用，进入操作系统内核。而一旦发生系统调用，就会直接触发runtime的调度，当前的P就会去找其他的M进行绑定，并取出G开始运行。</li>
@@ -195,8 +195,7 @@
 <h2 id="协作式抢占与信号式抢占区别"><a href="#协作式抢占与信号式抢占区别" class="headerlink" title="协作式抢占与信号式抢占区别"></a>协作式抢占与信号式抢占区别</h2><ul>
 <li><strong>协作式抢占调度</strong></li>
 </ul>
-<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;sysmon发现一个P一直处于running状态超过了10ms，将调用preemptone将G的stackguard0=stackPreempt，同时设置sched.gcwaiting=1。被标记后，在该G调用新函数时，通过g.stackguard0判断是否需要栈增长，需要栈增长就会通过morestack()检查执行schedule()，检查到sched.gcwaiting==1时，就会让当前G让出。</p>
-<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;G设置了标记位后，也不一定会被抢占。如果G调用的新函数是一个简单的死循环，将无法被抢占。如果G调用的新函数所需栈空间很少也不会被抢占，只有当新函数触发栈空间检查（morestack()）, 所需栈大于128字节，才会被抢占。那么这里就带来一些问题，比如下面的代码示例：</p>
+<p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;sysmon发现一个P一直处于running状态超过了10ms，将调用preemptone将G的stackguard0=stackPreempt，同时设置sched.gcwaiting=1。被标记后，在该G调用新函数时，通过g.stackguard0判断是否需要栈增长，需要栈增长就会通过morestack()检查执行schedule()，检查到sched.gcwaiting==1时，就会让当前G让出。<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;G设置了标记位后，也不一定会被抢占。如果G调用的新函数是一个简单的死循环，将无法被抢占。如果G调用的新函数所需栈空间很少也不会被抢占，只有当新函数触发栈空间检查（morestack()）, 所需栈大于128字节，才会被抢占。那么这里就带来一些问题，比如下面的代码示例：</p>
 <figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> main</span><br><span class="line"><span class="keyword">import</span> <span class="string">&quot;fmt&quot;</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">(n <span class="type">int</span>)</span></span> &#123;</span><br><span class="line">    <span class="keyword">go</span> <span class="function"><span class="keyword">func</span><span class="params">(n <span class="type">int</span>)</span></span>&#123;</span><br><span class="line">        <span class="keyword">for</span>&#123;</span><br><span class="line">            n++</span><br><span class="line">            fmt.Println(n)</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;(<span class="number">0</span>)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span>&#123;&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;在go 1.13版本之前，执行上述代码，会阻塞在go func()。原因是当go的GC触发时，会执行STW。而STW会抢占所有的P，让GC来运行。而go func()中是1个简单的死循环，这类操作无法进行newstack、morestack、syscall，所以无法检测stackguard0 == stackpreempt，也就不会执行后续的schedule()让当前G让出，导致阻塞。这种依赖栈增长的方式，不算是真正的抢占式调度。</p>
 <ul>
